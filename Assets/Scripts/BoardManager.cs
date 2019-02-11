@@ -4,14 +4,20 @@ using UnityEngine;
 
 public class BoardManager : MonoBehaviour
 {
+    public static BoardManager Instance { set; get; }
+    private bool[,] allowedMoves { set; get; }
     private const float TILE_SIZE = 1.0f; //dimension of the tile
     private const float TILE_OFFSET = 0.5f; //offset to reach center of the tile
-    private const int NUM = 10; //10 tiles for width
-    private const float PIECE_OFFSET = 0.5f; //offset to move up the chess piece
+    public static int NUM = 8; //8 tiles for width
+
+    public ChessPiece[,] chessPieces { set; get; }
+    private ChessPiece selectedPiece;
+
+    public bool isLightTurn = true; //default start with team 1
 
     //default selected piece coordinate
     //with a 10x10 chess board,
-    //the point range is (0,0) and (10,10)
+    //the point range is (0,0) and (8,8)
     private int selectedX = -1;
     private int selectedZ = -1;
 
@@ -21,17 +27,18 @@ public class BoardManager : MonoBehaviour
 
     //the pieces on board
     //initialized to avoid null reference
-    public List<GameObject> onboardPieces =  new List<GameObject>();
+    public List<GameObject> onboardPieces;
 
     //the orientation of the pieces
     //default facing the cetner of the board
-    private Quaternion orientation = Quaternion.Euler(0,180,0);
+    private Quaternion orientation = Quaternion.Euler(0,0,0);
 
     /* 
      * Start is called before the first frame update
      */
     void Start()
     {
+        Instance = this;
         //spawn the default pieces on start
         SpawnAll();
     }
@@ -43,12 +50,103 @@ public class BoardManager : MonoBehaviour
     {
         /*
          * DEBUG: Draw() method displays the tile grid of
-         *        the board. By default, it is 10x10.
+         *        the board. By default, it is 8x8.
          */
         Draw(); //display the outline
 
         UpdateSelection(); //update the piece selection
+
+
+
+        //mouse selection and piece movement
+        if (Input.GetMouseButtonDown(0))
+        {
+            //check within the board range
+            if (selectedX >= 0 && selectedZ >=0)
+            {
+                //check if a piece has already been selected
+                if (selectedPiece==null)
+                {
+                    selectPiece(selectedX,selectedZ);
+                }
+                else
+                {
+                    movePiece(selectedX,selectedZ);
+                }
+            }
+        }
     }
+
+    /*
+     * helper method to select a piece
+     */
+     private void selectPiece(int x, int z)
+    {
+        //no selected piece
+        if (chessPieces[x,z]==null) 
+        {
+            return;
+        }
+
+        //trying to select in the wrong turn
+        if (chessPieces[x,z].isLight != isLightTurn) 
+        {
+            return;
+        }
+
+        //get the allowed moves according to the chess piece
+        allowedMoves = chessPieces[x, z].PossibleMove();
+
+        selectedPiece = chessPieces[x,z];
+
+        //display the highlights
+        BoardHighlights.Instance.highlightAllowedMoves(allowedMoves);
+    }
+
+    /*
+     * helper method to move a piece
+     */
+     private void movePiece(int x, int z)
+    {
+        //depends on the chess piece itself
+        if (allowedMoves[x,z])
+        {
+            ChessPiece ch = chessPieces[x, z];
+
+            if (ch!=null && ch.isLight!=isLightTurn)
+            {
+                //game over case 
+                if (ch.GetType()==typeof(King))
+                {
+                    // end game
+                    return;
+                }
+
+                //eliminate the opponent piece case
+                onboardPieces.Remove(ch.gameObject);
+                Destroy(ch.gameObject);
+            }
+            //set the current position to null before moving the piece
+            chessPieces[selectedPiece.currentX, selectedPiece.currentZ] = null;
+
+            //update the new position to the chess piece
+            //as well as the board
+            selectedPiece.transform.position = GetTileCenter(x,z);
+            chessPieces[x, z] = selectedPiece;
+            selectedPiece.setPosition(x,z);
+
+            //after movement, the turn is over
+            isLightTurn = !isLightTurn;
+        }
+
+        //in the case of unallowed move is attempted
+        //unselect the current piece as feedback
+        selectedPiece = null;
+
+        //hide the highlight either after moving the piece or unselect the piece
+        BoardHighlights.Instance.hideHighlight();
+    }
+
 
     /*
      *  use debug to draw the grid of the 10x10 board 
@@ -137,15 +235,21 @@ public class BoardManager : MonoBehaviour
      * spawn the chess pieces from allPieces
      * 
      * @param   int index -- index of the piece to spawn in allPieces
-     * @param   int index -- spawn location
+     * @param   int x     -- x coordinate of the tile
+     * @param   int z     -- z coordinate of the tile 
      */
-    private void Spawn(int index, Vector3 position)
+    private void Spawn(int index, int x, int z)
     {
         //declare new game object from list allPieces
         GameObject piece = Instantiate(
             allPieces[index],
-            position,
+            GetTileCenter(x,z),
             orientation) as GameObject;
+
+        //add the spawn piece to the 2D array
+        chessPieces[x, z] = piece.GetComponent<ChessPiece>();
+        //set the position of the piece in the piece itself
+        chessPieces[x, z].setPosition(x,z);
 
         //update the location of the parent
         piece.transform.SetParent(transform);
@@ -165,9 +269,7 @@ public class BoardManager : MonoBehaviour
         Vector3 origin = Vector3.zero;
         origin.x += (TILE_SIZE * x) + TILE_OFFSET;
         origin.z += (TILE_SIZE * z) + TILE_OFFSET;
-        //to locate the piece on top of the board
-        //instead of through the board
-        origin.y += PIECE_OFFSET; 
+
         return origin;
     }
 
@@ -176,20 +278,52 @@ public class BoardManager : MonoBehaviour
      */
      private void SpawnAll()
     {
-        int currCoord = 0; //the current coordinate
-
+        onboardPieces = new List<GameObject>();
+        chessPieces = new ChessPiece[NUM,NUM];
         //spawn all default pieces
-        //player 1 team
-        for (int i=0; i<allPieces.Capacity; i++)
+
+        //player 1 team (light)
+        //king
+        Spawn(0, 3, 0);
+        //queen
+        Spawn(1, 4, 0);
+        //rooks
+        Spawn(2, 0, 0);
+        Spawn(2, 7, 0);
+        //bishops
+        Spawn(3, 2, 0);
+        Spawn(3, 5, 0);
+        //knights
+        Spawn(4, 1, 0);
+        Spawn(4, 6, 0);
+
+        //pawns
+        for (int i=0; i< 8; i++)
         {
-            Spawn(i,GetTileCenter(currCoord+i,0));
+            Spawn(5, i, 1);
         }
 
-        currCoord = NUM-1;
-        //player 2 team
-        for (int i=0; i<allPieces.Capacity;i++)
+
+        //player 2 team (dark)
+        orientation = Quaternion.Euler(0, 180, 0);
+        //king
+        Spawn(6, 4, 7);
+        //queen
+        Spawn(7, 3, 7);
+        //rooks
+        Spawn(8, 0, 7);
+        Spawn(8, 7, 7);
+        //bishops
+        Spawn(9, 2, 7);
+        Spawn(9, 5, 7);
+        //knights
+        Spawn(10, 1, 7);
+        Spawn(10, 6, 7);
+
+        //pawns
+        for (int i = 0; i < 8; i++)
         {
-            Spawn(i,GetTileCenter(currCoord-i,NUM-1));
+            Spawn(11, i, 6);
         }
     }
 }
