@@ -94,8 +94,28 @@ public class BoardManager : MonoBehaviour
             return;
         }
 
+        bool hasMoves = false; //check if there are any moves avaliable at all
+        //if not, then don't select the piece
+
         //get the allowed moves according to the chess piece
         allowedMoves = chessPieces[x, z].PossibleMove();
+
+        for (int i=0; i<NUM; i++)
+        {
+            for (int j =0; j <NUM;j++)
+            {
+                if (allowedMoves[i,j])
+                {
+                    hasMoves = true;
+                    break;
+                }
+            }
+        }
+
+        if (!hasMoves) //no moves avaliable
+        {
+            return; 
+        }
 
         selectedPiece = chessPieces[x,z];
 
@@ -119,6 +139,7 @@ public class BoardManager : MonoBehaviour
                 if (ch.GetType()==typeof(King))
                 {
                     // end game
+                    endGame();
                     return;
                 }
 
@@ -325,5 +346,29 @@ public class BoardManager : MonoBehaviour
         {
             Spawn(11, i, 6);
         }
+    }
+
+
+    private void endGame()
+    {
+        if (isLightTurn)
+        {
+            //light team wins
+        }
+        else
+        {
+            //dark team wins
+        }
+
+        foreach (GameObject ob in onboardPieces)
+        {
+            Destroy(ob);
+        }
+        //reset the board
+        isLightTurn = true;
+        BoardHighlights.Instance.hideHighlight();
+        //reset default direction of the pieces
+        orientation = Quaternion.Euler(0, 0, 0);
+        SpawnAll();
     }
 }

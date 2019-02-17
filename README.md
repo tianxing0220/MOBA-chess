@@ -19,3 +19,4 @@ Possible add-ons:
 4. chess piece customization
 5. items to enhance and diversify the game stats
 6. particle effects
+7. Shaders
